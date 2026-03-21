@@ -1,72 +1,149 @@
-import { useState, useEffect } from 'react';
-import { initSDK, getAccelerationMode } from './runanywhere';
-import { ChatTab } from './components/ChatTab';
-import { VisionTab } from './components/VisionTab';
-import { VoiceTab } from './components/VoiceTab';
-import { ToolsTab } from './components/ToolsTab';
+import { useState, useEffect, useRef } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ModelLoader } from './components/ModelLoader';
+import { Landing } from './pages/Landing';
+import { IngredientScanner } from './components/IngredientScanner';
+import { RecipeGrid } from './components/RecipeGrid';
+import { SmartStepMode } from './components/SmartStepMode';
+import { NavBar } from './components/NavBar';
 
-type Tab = 'chat' | 'vision' | 'voice' | 'tools';
+interface Recipe {
+  id: number
+  name: string
+  description: string
+  time: number
+  difficulty: string
+  macros: { P: number; C: number; F: number }
+  calories: number
+  matchedIngredients: string[]
+}
+
+const pageVariants = {
+  initial: { opacity: 0, y: 20 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -20 }
+};
+
+const pageTransition = { duration: 0.2, ease: 'easeInOut' }
 
 export function App() {
-  const [sdkReady, setSdkReady] = useState(false);
-  const [sdkError, setSdkError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('chat');
+  const [modelsReady, setModelsReady] = useState(false);
+  const [loadingModel, setLoadingModel] = useState('SmolVLM · Vision Model');
+  const [loadProgress, setLoadProgress] = useState(0);
+  const [confirmedIngredients, setConfirmedIngredients] = useState<string[]>([]);
+  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
+  const recipeRef = useRef<HTMLDivElement>(null);
 
+  // Preload models simulation
   useEffect(() => {
-    initSDK()
-      .then(() => setSdkReady(true))
-      .catch((err) => setSdkError(err instanceof Error ? err.message : String(err)));
+    let progress = 0;
+    const steps = [
+      { name: 'SmolVLM · Vision Model', duration: 900 },
+      { name: 'SmolLM2 · Recipe Engine', duration: 700 },
+      { name: 'Whisper · Voice Recognition', duration: 600 },
+      { name: 'Piper · Voice Synthesis', duration: 500 }
+    ];
+    let stepIndex = 0;
+    let stepProgress = 0;
+
+    const tick = setInterval(() => {
+      stepProgress += 8;
+      if (stepProgress >= 100) {
+        stepProgress = 0;
+        stepIndex++;
+        if (stepIndex >= steps.length) {
+          clearInterval(tick);
+          setLoadingModel('All models ready');
+          setLoadProgress(100);
+          setTimeout(() => setModelsReady(true), 600);
+          return;
+        }
+      }
+      setLoadingModel(steps[stepIndex].name);
+      setLoadProgress(stepProgress);
+    }, 80);
+
+    return () => clearInterval(tick);
   }, []);
 
-  if (sdkError) {
-    return (
-      <div className="app-loading">
-        <h2>SDK Error</h2>
-        <p className="error-text">{sdkError}</p>
-      </div>
-    );
-  }
+  const handleStart = () => {
+    const appStart = document.getElementById('app-start');
+    if (appStart) {
+      appStart.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
-  if (!sdkReady) {
-    return (
-      <div className="app-loading">
-        <div className="spinner" />
-        <h2>Loading RunAnywhere SDK...</h2>
-        <p>Initializing on-device AI engine</p>
-      </div>
-    );
-  }
+  const handleIngredientsConfirmed = (ingredients: string[]) => {
+    setConfirmedIngredients(ingredients);
+    setTimeout(() => {
+      recipeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  };
 
-  const accel = getAccelerationMode();
+  const handleRecipeSelect = (recipe: Recipe) => {
+    setSelectedRecipe(recipe);
+  };
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>RunAnywhere AI</h1>
-        {accel && <span className="badge">{accel === 'webgpu' ? 'WebGPU' : 'CPU'}</span>}
-      </header>
+    <>
+      <NavBar modelsReady={modelsReady} />
+      <AnimatePresence mode="wait">
+        {!modelsReady && (
+          <motion.div
+            key="loader"
+            variants={pageVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={pageTransition}
+            style={{ position: 'fixed', inset: 0, zIndex: 100 }}
+          >
+            <ModelLoader modelName={loadingModel} progress={loadProgress} />
+          </motion.div>
+        )}
 
-      <nav className="tab-bar">
-        <button className={activeTab === 'chat' ? 'active' : ''} onClick={() => setActiveTab('chat')}>
-          💬 Chat
-        </button>
-        <button className={activeTab === 'vision' ? 'active' : ''} onClick={() => setActiveTab('vision')}>
-          📷 Vision
-        </button>
-        <button className={activeTab === 'voice' ? 'active' : ''} onClick={() => setActiveTab('voice')}>
-          🎙️ Voice
-        </button>
-        <button className={activeTab === 'tools' ? 'active' : ''} onClick={() => setActiveTab('tools')}>
-          🔧 Tools
-        </button>
-      </nav>
+        {modelsReady && !selectedRecipe && (
+          <motion.div
+            key="main"
+            variants={pageVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={pageTransition}
+            style={{ paddingTop: '44px' }}
+          >
+            <Landing modelsReady={modelsReady} onStart={handleStart} />
+            <div id="app-start">
+              <IngredientScanner onIngredientsConfirmed={handleIngredientsConfirmed} />
+            </div>
+            {confirmedIngredients.length > 0 && (
+              <div ref={recipeRef} id="recipe-grid">
+                <RecipeGrid
+                  ingredients={confirmedIngredients}
+                  onRecipeSelect={handleRecipeSelect}
+                />
+              </div>
+            )}
+          </motion.div>
+        )}
 
-      <main className="tab-content">
-        {activeTab === 'chat' && <ChatTab />}
-        {activeTab === 'vision' && <VisionTab />}
-        {activeTab === 'voice' && <VoiceTab />}
-        {activeTab === 'tools' && <ToolsTab />}
-      </main>
-    </div>
+        {modelsReady && selectedRecipe && (
+          <motion.div
+            key="smartstep"
+            variants={pageVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={pageTransition}
+            style={{ position: 'fixed', inset: 0, zIndex: 200 }}
+          >
+            <SmartStepMode 
+              recipe={selectedRecipe} 
+              onExit={() => setSelectedRecipe(null)} 
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
   );
 }
