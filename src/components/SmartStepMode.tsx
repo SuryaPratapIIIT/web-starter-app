@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Step  { id: number; text: string; timer: number | null }
+interface Step { id: number; text: string; timer: number | null }
 interface Recipe { id: number; name: string; calories: number; macros: { P: number; C: number; F: number } }
 interface SmartStepModeProps { recipe: Recipe; onExit: () => void }
 
@@ -18,29 +18,29 @@ const GENERIC_STEPS: Step[] = [
 ]
 
 // ─── AI API Service constants ──────────────────────────────────────────────────
-const API_KEY       = import.meta.env.VITE_LLM_API_KEY as string
-const API_BASE      = (import.meta.env.VITE_PRIMARY_INFERENCE_ENDPOINT as string) 
-const STT_ENGINE    = (import.meta.env.VITE_SPEECH_RECOGNIZER_MODEL as string) 
-const INFERENCE_LLM = (import.meta.env.VITE_CORE_REASONING_MODEL as string) 
-const TTS_ENGINE    = (import.meta.env.VITE_VOICE_SYNTHESIS_MODEL as string) 
-const VOICE_PROFILE = (import.meta.env.VITE_VOICE_SPEAKER_PROFILE as string) 
+const API_KEY = import.meta.env.VITE_LLM_API_KEY as string
+const API_BASE = (import.meta.env.VITE_PRIMARY_INFERENCE_ENDPOINT as string)
+const STT_ENGINE = (import.meta.env.VITE_SPEECH_RECOGNIZER_MODEL as string)
+const INFERENCE_LLM = (import.meta.env.VITE_CORE_REASONING_MODEL as string)
+const TTS_ENGINE = (import.meta.env.VITE_VOICE_SYNTHESIS_MODEL as string)
+const VOICE_PROFILE = (import.meta.env.VITE_VOICE_SPEAKER_PROFILE as string)
 
 // ─── Cloud STT ─────────────────────────────────────────────────────────────────
 async function remoteTranscribe(blob: Blob): Promise<string> {
-  const ext  = blob.type.includes('ogg') ? 'ogg'
-             : blob.type.includes('mp4') ? 'mp4'
-             : blob.type.includes('webm') ? 'webm'
-             : 'm4a'
+  const ext = blob.type.includes('ogg') ? 'ogg'
+    : blob.type.includes('mp4') ? 'mp4'
+      : blob.type.includes('webm') ? 'webm'
+        : 'm4a'
   const form = new FormData()
   form.append('file', blob, `audio.${ext}`)
   form.append('model', STT_ENGINE)
   form.append('temperature', '0')
   form.append('response_format', 'verbose_json')
-    const res  = await fetch(`${API_BASE}/audio/transcriptions`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${API_KEY}` },
-      body: form,
-    })
+  const res = await fetch(`${API_BASE}/audio/transcriptions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${API_KEY}` },
+    body: form,
+  })
   if (!res.ok) return ''
   const data = await res.json()
   return (data.text as string || '').trim()
@@ -79,11 +79,11 @@ async function remoteSpeak(text: string): Promise<void> {
     })
     if (!res.ok) throw new Error('TTS failed')
     const blob = await res.blob()
-    const url  = URL.createObjectURL(blob)
+    const url = URL.createObjectURL(blob)
     await new Promise<void>((resolve) => {
       const audio = new Audio(url)
-      audio.onended  = () => { URL.revokeObjectURL(url); resolve() }
-      audio.onerror  = () => { URL.revokeObjectURL(url); resolve() }
+      audio.onended = () => { URL.revokeObjectURL(url); resolve() }
+      audio.onerror = () => { URL.revokeObjectURL(url); resolve() }
       audio.play().catch(() => {
         // fallback to browser TTS
         URL.revokeObjectURL(url)
@@ -116,47 +116,47 @@ function browserSpeak(text: string, onDone: () => void) {
 // ──────────────────────────────────────────────────────────────────────────────
 export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
   // Step state
-  const [steps, setSteps]               = useState<Step[] | null>(null)
+  const [steps, setSteps] = useState<Step[] | null>(null)
   const [isGenerating, setIsGenerating] = useState(true)
-  const [currentStep, setCurrentStep]   = useState(1)
-  const [repeatKey, setRepeatKey]       = useState(0)
-  const [isCompleted, setIsCompleted]   = useState(false)
+  const [currentStep, setCurrentStep] = useState(1)
+  const [repeatKey, setRepeatKey] = useState(0)
+  const [isCompleted, setIsCompleted] = useState(false)
 
   // Mic / voice state
-  const [micStatus, setMicStatus]             = useState<'idle' | 'recording' | 'processing'>('idle')
-  const [liveTranscript, setLiveTranscript]   = useState('')
-  const [lastUserSaid, setLastUserSaid]       = useState('')
-  const [aiResponse, setAiResponse]           = useState('')
-  const [activeCommandPill, setActivePill]    = useState('')
-  const [micError, setMicError]               = useState('')
-  const [isSpeaking, setIsSpeaking]           = useState(false)
+  const [micStatus, setMicStatus] = useState<'idle' | 'recording' | 'processing'>('idle')
+  const [liveTranscript, setLiveTranscript] = useState('')
+  const [lastUserSaid, setLastUserSaid] = useState('')
+  const [aiResponse, setAiResponse] = useState('')
+  const [activeCommandPill, setActivePill] = useState('')
+  const [micError, setMicError] = useState('')
+  const [isSpeaking, setIsSpeaking] = useState(false)
 
   // Timer
-  const [timeRemaining, setTimeRemaining]     = useState<number | null>(null)
-  const [isTimerPulsing, setIsTimerPulsing]   = useState(false)
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null)
+  const [isTimerPulsing, setIsTimerPulsing] = useState(false)
 
   // UI
-  const [toast, setToast]             = useState<string | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
   const [showExitModal, setShowExitModal] = useState(false)
 
   // Refs
-  const stepsRef          = useRef<Step[] | null>(null)
-  const currentStepRef    = useRef(1)
-  const mediaRecorderRef  = useRef<MediaRecorder | null>(null)
-  const chunksRef         = useRef<Blob[]>([])
-  const mimeTypeRef       = useRef('audio/webm')
-  const isRecordingRef    = useRef(false)
-  const isSpeakingRef     = useRef(false)
-  const isProcessingRef   = useRef(false)
-  const timerIntervalRef  = useRef<number | undefined>(undefined)
-  const toastTimeoutRef   = useRef<number | undefined>(undefined)
-  const pillTimeoutRef    = useRef<number | undefined>(undefined)
-  const streamRef         = useRef<MediaStream | null>(null)
+  const stepsRef = useRef<Step[] | null>(null)
+  const currentStepRef = useRef(1)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const chunksRef = useRef<Blob[]>([])
+  const mimeTypeRef = useRef('audio/webm')
+  const isRecordingRef = useRef(false)
+  const isSpeakingRef = useRef(false)
+  const isProcessingRef = useRef(false)
+  const timerIntervalRef = useRef<number | undefined>(undefined)
+  const toastTimeoutRef = useRef<number | undefined>(undefined)
+  const pillTimeoutRef = useRef<number | undefined>(undefined)
+  const streamRef = useRef<MediaStream | null>(null)
 
   // keep refs synced
-  useEffect(() => { stepsRef.current      = steps },       [steps])
+  useEffect(() => { stepsRef.current = steps }, [steps])
   useEffect(() => { currentStepRef.current = currentStep }, [currentStep])
-  useEffect(() => { isSpeakingRef.current  = isSpeaking },  [isSpeaking])
+  useEffect(() => { isSpeakingRef.current = isSpeaking }, [isSpeaking])
 
   // ── Toast ──────────────────────────────────────────────────────────────────
   const showToast = useCallback((msg: string) => {
@@ -287,7 +287,7 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
         setMicStatus('processing')
         try {
           const text = await remoteTranscribe(blob)
-          console.log('[Whisper]', text)
+          console.log('[STT]', text)
           if (text && text.trim().length > 1) {
             setLiveTranscript(text)
             setLastUserSaid(`You: "${text.trim()}"`)
@@ -324,7 +324,7 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
         streamRef.current = stream
 
         const mimes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4']
-        const mime  = mimes.find(m => MediaRecorder.isTypeSupported(m)) || ''
+        const mime = mimes.find(m => MediaRecorder.isTypeSupported(m)) || ''
         const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined)
         mediaRecorderRef.current = recorder
 
@@ -339,17 +339,17 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
 
     return () => {
       destroyed = true
-      try { mediaRecorderRef.current?.stop() } catch (_) {}
+      try { mediaRecorderRef.current?.stop() } catch (_) { }
       streamRef.current?.getTracks().forEach(t => t.stop())
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ── Speak first step when steps load ──────────────────────────────────────
   useEffect(() => {
     if (isGenerating || !steps) return
     speak(`Let's cook ${recipe.name}. ${steps[0].text}`)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating])
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────────
@@ -357,7 +357,7 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
     const onKey = (e: KeyboardEvent) => {
       if (showExitModal) return
       if (e.key === 'ArrowRight') { e.preventDefault(); handleNext() }
-      if (e.key === 'ArrowLeft')  { e.preventDefault(); handlePrev() }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); handlePrev() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -380,10 +380,10 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
             max_completion_tokens: 1200,
           }),
         })
-        const data    = await res.json()
+        const data = await res.json()
         const content = data.choices?.[0]?.message?.content ?? ''
-        const start   = content.indexOf('[')
-        const end     = content.lastIndexOf(']')
+        const start = content.indexOf('[')
+        const end = content.lastIndexOf(']')
         if (start !== -1 && end !== -1) {
           const parsed = JSON.parse(content.slice(start, end + 1)) as Step[]
           setSteps(parsed.length > 0 ? parsed : GENERIC_STEPS)
@@ -461,7 +461,7 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
     )
   }
 
-  const totalSteps     = steps.length
+  const totalSteps = steps.length
   const currentStepData = steps[currentStep - 1]
 
   // ── Completion screen ──────────────────────────────────────────────────────
@@ -498,8 +498,8 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
               {[
                 { label: `${recipe.calories} kcal`, accent: true },
                 { label: `${recipe.macros.P}g Protein`, accent: false },
-                { label: `${recipe.macros.C}g Carbs`,   accent: false },
-                { label: `${recipe.macros.F}g Fat`,     accent: false },
+                { label: `${recipe.macros.C}g Carbs`, accent: false },
+                { label: `${recipe.macros.F}g Fat`, accent: false },
               ].map(({ label, accent }) => (
                 <span key={label} style={{
                   background: accent ? 'rgba(232,123,79,0.1)' : 'rgba(255,255,255,0.06)',
@@ -535,16 +535,16 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
   }
 
   // ── Mic visual state ───────────────────────────────────────────────────────
-  const micIsActive   = micStatus === 'recording'
+  const micIsActive = micStatus === 'recording'
   const micStatusText = micError
     ? micError
     : isSpeaking
-    ? '🔊 AI speaking…'
-    : micStatus === 'processing'
-    ? '⚙️ Processing…'
-    : micIsActive
-    ? '🎙️ Listening — speak freely'
-    : '🎙️ Starting mic…'
+      ? '🔊 AI speaking…'
+      : micStatus === 'processing'
+        ? '⚙️ Processing…'
+        : micIsActive
+          ? '🎙️ Listening — speak freely'
+          : '🎙️ Starting mic…'
 
   // ── Main render ────────────────────────────────────────────────────────────
   return (
@@ -666,17 +666,17 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
         {/* Command pills */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
           {[
-            { cmd: 'next',   label: '→ next'   },
+            { cmd: 'next', label: '→ next' },
             { cmd: 'repeat', label: '↺ repeat' },
-            { cmd: 'back',   label: '← back'   },
-            { cmd: 'done',   label: '✓ done'   },
+            { cmd: 'back', label: '← back' },
+            { cmd: 'done', label: '✓ done' },
           ].map(({ cmd, label }) => {
             const isActive = activeCommandPill === cmd
             return (
               <div key={cmd} style={{
-                background:  isActive ? 'rgba(232,123,79,0.15)' : 'rgba(255,255,255,0.05)',
-                border:     `1px solid ${isActive ? 'rgba(232,123,79,0.55)' : 'rgba(255,255,255,0.09)'}`,
-                color:       isActive ? '#E87B4F' : 'rgba(255,255,255,0.35)',
+                background: isActive ? 'rgba(232,123,79,0.15)' : 'rgba(255,255,255,0.05)',
+                border: `1px solid ${isActive ? 'rgba(232,123,79,0.55)' : 'rgba(255,255,255,0.09)'}`,
+                color: isActive ? '#E87B4F' : 'rgba(255,255,255,0.35)',
                 borderRadius: '20px', padding: '5px 14px',
                 fontSize: '12px', fontWeight: '500',
                 transition: 'all 0.15s ease',
@@ -702,8 +702,8 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
             background: isSpeaking
               ? 'rgba(255,255,255,0.06)'
               : micIsActive
-              ? '#E87B4F'
-              : 'rgba(232,123,79,0.7)',
+                ? '#E87B4F'
+                : 'rgba(232,123,79,0.7)',
             border: `1px solid ${micIsActive && !isSpeaking ? '#E87B4F' : 'rgba(255,255,255,0.1)'}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             position: 'relative', zIndex: 1,

@@ -116,7 +116,7 @@ export const RecipeGrid = ({ ingredients, onRecipeSelect }: RecipeGridProps) => 
     const fetchRecipes = async () => {
       try {
         setIsLoading(true)
-        const apiUrl = import.meta.env.VITE_LLM_API_URL || `${import.meta.env.VITE_PRIMARY_INFERENCE_ENDPOINT }`
+        const apiUrl = import.meta.env.VITE_LLM_API_URL || `${import.meta.env.VITE_PRIMARY_INFERENCE_ENDPOINT}`
         const apiKey = import.meta.env.VITE_LLM_API_KEY
 
         if (!apiKey) {
@@ -133,7 +133,7 @@ export const RecipeGrid = ({ ingredients, onRecipeSelect }: RecipeGridProps) => 
             'Authorization': `Bearer ${apiKey}`
           },
           body: JSON.stringify({
-            model: "meta-llama/llama-4-scout-17b-16e-instruct",
+            model: import.meta.env.VITE_CORE_REASONING_MODEL,
             messages: [
               {
                 role: "system",
@@ -165,11 +165,11 @@ Each object in the array MUST have this exact schema:
 
         const data = await response.json()
         const content = data.choices[0]?.message?.content || ""
-        
+
         // Extract array from response in case there is trailing/leading text
         const jsonStr = content.substring(content.indexOf('['), content.lastIndexOf(']') + 1)
         const parsedRecipes = JSON.parse(jsonStr) as Recipe[]
-        
+
         setRecipes(parsedRecipes.length > 0 ? parsedRecipes : DEMO_RECIPES)
       } catch (err) {
         console.error("Error generating recipes:", err)
@@ -382,8 +382,8 @@ Each object in the array MUST have this exact schema:
               letterSpacing: '0.02em',
               transition: 'opacity 0.2s'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
-            onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+              onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+              onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
             >
               Cook this →
             </div>
