@@ -107,10 +107,82 @@ const getDifficultyStyles = (difficulty: string) => {
 
 export const RecipeGrid = ({ ingredients, onRecipeSelect }: RecipeGridProps) => {
   const [visible, setVisible] = useState(false)
+  const [recipes, setRecipes] = useState<Recipe[]>([])
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     setTimeout(() => setVisible(true), 300)
-  }, [])
+
+    const fetchRecipes = async () => {
+      try {
+        setIsLoading(true)
+        const apiUrl = import.meta.env.VITE_LLM_API_URL || 'https://api.groq.com/openai/v1/chat/completions'
+        const apiKey = import.meta.env.VITE_LLM_API_KEY
+
+        if (!apiKey) {
+          console.warn("API Key not found, falling back to demo recipes.")
+          setRecipes(DEMO_RECIPES)
+          setIsLoading(false)
+          return
+        }
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: "meta-llama/llama-4-scout-17b-16e-instruct",
+            messages: [
+              {
+                role: "system",
+                content: `You are a world-class culinary AI. Output ONLY a valid JSON array of recipe objects. Do NOT use markdown code blocks (\`\`\`). The user will provide a list of ingredients. Invent 3 to 6 delicious recipes utilizing some or all of these ingredients.
+
+Each object in the array MUST have this exact schema:
+{
+  "id": number (unique),
+  "name": string,
+  "description": string (short, engaging 1-sentence),
+  "time": number (minutes to cook),
+  "difficulty": "easy" | "medium" | "hard",
+  "macros": { "P": number, "C": number, "F": number },
+  "calories": number,
+  "matchedIngredients": [string] (list of input ingredients used)
+}`
+              },
+              {
+                role: "user",
+                content: `Here are my ingredients: ${ingredients.join(", ")}`
+              }
+            ],
+            temperature: 0.6,
+            max_completion_tokens: 1500
+          })
+        })
+
+        if (!response.ok) throw new Error("Failed to fetch recipes")
+
+        const data = await response.json()
+        const content = data.choices[0]?.message?.content || ""
+        
+        // Extract array from response in case there is trailing/leading text
+        const jsonStr = content.substring(content.indexOf('['), content.lastIndexOf(']') + 1)
+        const parsedRecipes = JSON.parse(jsonStr) as Recipe[]
+        
+        setRecipes(parsedRecipes.length > 0 ? parsedRecipes : DEMO_RECIPES)
+      } catch (err) {
+        console.error("Error generating recipes:", err)
+        setRecipes(DEMO_RECIPES)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    if (ingredients.length > 0) {
+      fetchRecipes()
+    }
+  }, [ingredients])
 
   return (
     <section style={{
@@ -135,14 +207,19 @@ export const RecipeGrid = ({ ingredients, onRecipeSelect }: RecipeGridProps) => 
           fontWeight: '600',
           marginBottom: '8px'
         }}>
-          Recipes you can make right now
+          {isLoading ? 'Generating custom recipes...' : 'Recipes you can make right now'}
         </div>
         <div style={{
           fontFamily: "'DM Sans', sans-serif",
           fontSize: '13px',
-          color: 'var(--muted)'
+          color: 'var(--muted)',
+          height: '20px'
         }}>
-          Based on {ingredients.length} ingredients detected · {DEMO_RECIPES.length} matches found
+          {isLoading ? (
+            <span className="animate-pulse">Chef AI is experimenting...</span>
+          ) : (
+            `Based on ${ingredients.length} ingredients detected · ${recipes.length} matches found`
+          )}
         </div>
       </div>
 
@@ -150,9 +227,12 @@ export const RecipeGrid = ({ ingredients, onRecipeSelect }: RecipeGridProps) => 
       <div className="recipe-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(3, 1fr)',
-        gap: '20px'
+        gap: '20px',
+        opacity: isLoading ? 0.4 : 1,
+        pointerEvents: isLoading ? 'none' : 'auto',
+        transition: 'opacity 0.3s ease'
       }}>
-        {DEMO_RECIPES.map((recipe, index) => (
+        {recipes.map((recipe, index) => (
           <GlassCard
             key={recipe.id}
             className="recipe-card"

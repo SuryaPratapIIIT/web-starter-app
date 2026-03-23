@@ -47,13 +47,23 @@ export const IngredientScanner = ({ onIngredientsConfirmed }: IngredientScannerP
               {
                 role: "user",
                 content: [
-                  { type: "text", text: "Identify the main raw food ingredients in this image. Return ONLY a comma-separated list of the ingredients (e.g., 'Tomato, Onion, Garlic'). No other text or explanation." },
+                  { type: "text", text: "tell all the ingredients present in the image" }
+                ]
+              },
+              {
+                role: "assistant",
+                content: "The image presents a diverse array of ingredients, which are:\n\n*   **Vegetables:**\n    *   Carrot\n    *   Capsicum\n    *   Tomato\n    *   Onion\n    *   Green Beans\n    *   Green peas\n    *   Green Chili\n*   **Fruits of Vegetable Plants:**\n    *   Garlic (a type of bulb)\n*   **Dairy or Dairy-like Ingredients:**\n    *   Paneer\n    *   Fresh Cream\n*   **Nuts and Seeds:**\n    *   Cashunuts (Cashews)\n    *   Coriander seeds\n*   **Other:**\n    *   Ginger"
+              },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "tell all the ingredients present in the image" },
                   { type: "image_url", image_url: { url: base64Image } }
                 ]
               }
             ],
-            temperature: 0.1,
-            max_completion_tokens: 150,
+            temperature: 1,
+            max_completion_tokens: 1024,
             top_p: 1,
             stream: true
           })
@@ -90,12 +100,22 @@ export const IngredientScanner = ({ onIngredientsConfirmed }: IngredientScannerP
                 const textChunk = parsed.choices[0]?.delta?.content || "";
                 fullContent += textChunk;
                 
-                // Real-time chip parsing
-                const ingredients = fullContent.split(',')
-                  .map((s) => s.trim().replace(/^['"*\-.]+/, '').replace(/['"*\-.]+$/, ''))
-                  .filter(Boolean);
+                // Real-time chip parsing for markdown lists
+                const parsedLines = fullContent.split('\n');
+                const ingredients: string[] = [];
+                for (const textLine of parsedLines) {
+                  // Skip categories (which typically contain **)
+                  if (textLine.includes('**')) continue;
+                  
+                  // Match list items like "* Onion" or "- Garlic (a type of bulb)"
+                  const match = textLine.match(/^\s*[-*]\s+([^(*]+)/);
+                  if (match && match[1].trim()) {
+                    ingredients.push(match[1].trim());
+                  }
+                }
                 
-                setDetectedIngredients(ingredients);
+                // Keep only unique ingredients
+                setDetectedIngredients(Array.from(new Set(ingredients)));
               } catch (err) {
                 // Ignore incomplete JSON chunks during stream iteration
               }
