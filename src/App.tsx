@@ -6,6 +6,7 @@ import { IngredientScanner } from './components/IngredientScanner';
 import { RecipeGrid } from './components/RecipeGrid';
 import { SmartStepMode } from './components/SmartStepMode';
 import { NavBar } from './components/NavBar';
+import { initSDK } from './runanywhere';
 
 interface Recipe {
   id: number
@@ -24,53 +25,68 @@ const pageVariants = {
   exit: { opacity: 0, y: -20 }
 };
 
-const pageTransition = { duration: 0.2, ease: 'easeInOut' }
+const pageTransition = { duration: 0.2, ease: 'easeInOut' as const }
 
 export function App() {
   const [modelsReady, setModelsReady] = useState(false);
-  const [loadingModel, setLoadingModel] = useState('SmolVLM · Vision Model');
+  const [loadingModel, setLoadingModel] = useState('Initializing AI backends...');
   const [loadProgress, setLoadProgress] = useState(0);
   const [confirmedIngredients, setConfirmedIngredients] = useState<string[]>([]);
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const recipeRef = useRef<HTMLDivElement>(null);
 
-  // Preload models simulation
+  // Initialize the RunAnywhere SDK — registers LlamaCPP + ONNX backends
   useEffect(() => {
-    let progress = 0;
-    const steps = [
-      { name: 'SmolVLM · Vision Model', duration: 900 },
-      { name: 'SmolLM2 · Recipe Engine', duration: 700 },
-      { name: 'Whisper · Voice Recognition', duration: 600 },
-      { name: 'Piper · Voice Synthesis', duration: 500 }
-    ];
-    let stepIndex = 0;
-    let stepProgress = 0;
+    let cancelled = false;
 
+    // Animate progress while SDK initializes
+    let fakeProgress = 0;
     const tick = setInterval(() => {
-      stepProgress += 8;
-      if (stepProgress >= 100) {
-        stepProgress = 0;
-        stepIndex++;
-        if (stepIndex >= steps.length) {
-          clearInterval(tick);
-          setLoadingModel('All models ready');
-          setLoadProgress(100);
-          setTimeout(() => setModelsReady(true), 600);
-          return;
-        }
-      }
-      setLoadingModel(steps[stepIndex].name);
-      setLoadProgress(stepProgress);
+      fakeProgress = Math.min(fakeProgress + 3, 88);
+      if (!cancelled) setLoadProgress(fakeProgress);
     }, 80);
 
-    return () => clearInterval(tick);
+    const phases = [
+      'Initializing AI backends...',
+      'Registering LlamaCPP engine...',
+      'Registering ONNX runtime...',
+      'Loading model catalog...',
+    ];
+    let phaseIdx = 0;
+    const phaseTimer = setInterval(() => {
+      phaseIdx = Math.min(phaseIdx + 1, phases.length - 1);
+      if (!cancelled) setLoadingModel(phases[phaseIdx]);
+    }, 700);
+
+    initSDK()
+      .then(() => {
+        if (cancelled) return;
+        clearInterval(tick);
+        clearInterval(phaseTimer);
+        setLoadingModel('All systems ready ✓');
+        setLoadProgress(100);
+        setTimeout(() => { if (!cancelled) setModelsReady(true); }, 500);
+      })
+      .catch((err) => {
+        console.warn('SDK init error (non-fatal):', err);
+        if (cancelled) return;
+        clearInterval(tick);
+        clearInterval(phaseTimer);
+        setLoadingModel('Ready');
+        setLoadProgress(100);
+        setTimeout(() => { if (!cancelled) setModelsReady(true); }, 500);
+      });
+
+    return () => {
+      cancelled = true;
+      clearInterval(tick);
+      clearInterval(phaseTimer);
+    };
   }, []);
 
   const handleStart = () => {
     const appStart = document.getElementById('app-start');
-    if (appStart) {
-      appStart.scrollIntoView({ behavior: 'smooth' });
-    }
+    if (appStart) appStart.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleIngredientsConfirmed = (ingredients: string[]) => {
@@ -80,9 +96,7 @@ export function App() {
     }, 100);
   };
 
-  const handleRecipeSelect = (recipe: Recipe) => {
-    setSelectedRecipe(recipe);
-  };
+  const handleRecipeSelect = (recipe: Recipe) => setSelectedRecipe(recipe);
 
   return (
     <>
@@ -137,9 +151,9 @@ export function App() {
             transition={pageTransition}
             style={{ position: 'fixed', inset: 0, zIndex: 200 }}
           >
-            <SmartStepMode 
-              recipe={selectedRecipe} 
-              onExit={() => setSelectedRecipe(null)} 
+            <SmartStepMode
+              recipe={selectedRecipe}
+              onExit={() => setSelectedRecipe(null)}
             />
           </motion.div>
         )}
