@@ -23,7 +23,7 @@ export const IngredientScanner = ({ onIngredientsConfirmed }: IngredientScannerP
       setIsScanning(true)
 
       try {
-        const apiUrl = import.meta.env.VITE_LLM_API_URL || 'https://api.groq.com/openai/v1/chat/completions'
+        const apiUrl = import.meta.env.VITE_LLM_API_URL 
         const apiKey = import.meta.env.VITE_LLM_API_KEY
 
         if (!apiKey) {
@@ -42,7 +42,7 @@ export const IngredientScanner = ({ onIngredientsConfirmed }: IngredientScannerP
             'Authorization': `Bearer ${apiKey}`
           },
           body: JSON.stringify({
-            model: "meta-llama/llama-4-scout-17b-16e-instruct",
+            model: import.meta.env.VITE_CORE_REASONING_MODEL,
             messages: [
               {
                 role: "user",
@@ -85,35 +85,35 @@ export const IngredientScanner = ({ onIngredientsConfirmed }: IngredientScannerP
         while (true) {
           const { done, value } = await streamReader.read();
           if (done) break;
-          
+
           const chunk = decoder.decode(value, { stream: true });
           const lines = chunk.split('\n');
-          
+
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const dataStr = line.slice(6).trim();
               if (dataStr === '[DONE]') break;
               if (!dataStr) continue;
-              
+
               try {
                 const parsed = JSON.parse(dataStr);
                 const textChunk = parsed.choices[0]?.delta?.content || "";
                 fullContent += textChunk;
-                
+
                 // Real-time chip parsing for markdown lists
                 const parsedLines = fullContent.split('\n');
                 const ingredients: string[] = [];
                 for (const textLine of parsedLines) {
                   // Skip categories (which typically contain **)
                   if (textLine.includes('**')) continue;
-                  
+
                   // Match list items like "* Onion" or "- Garlic (a type of bulb)"
                   const match = textLine.match(/^\s*[-*]\s+([^(*]+)/);
                   if (match && match[1].trim()) {
                     ingredients.push(match[1].trim());
                   }
                 }
-                
+
                 // Keep only unique ingredients
                 setDetectedIngredients(Array.from(new Set(ingredients)));
               } catch (err) {
@@ -122,7 +122,7 @@ export const IngredientScanner = ({ onIngredientsConfirmed }: IngredientScannerP
             }
           }
         }
-        
+
         // Finished streaming
         setIsScanning(false);
         setShowCTA(true);

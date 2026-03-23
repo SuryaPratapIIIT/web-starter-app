@@ -17,42 +17,42 @@ const GENERIC_STEPS: Step[] = [
   { id: 7, text: "Plate and serve. You're done — enjoy your meal.", timer: null },
 ]
 
-// ─── Groq API constants ────────────────────────────────────────────────────────
-const GROQ_KEY    = import.meta.env.VITE_LLM_API_KEY as string
-const GROQ_BASE   = 'https://api.groq.com/openai/v1'
-const STT_MODEL   = 'whisper-large-v3-turbo'
-const LLM_MODEL   = 'meta-llama/llama-4-scout-17b-16e-instruct'
-const TTS_MODEL   = 'playai-tts'
-const TTS_VOICE   = 'Fritz-PlayAI'
+// ─── AI API Service constants ──────────────────────────────────────────────────
+const API_KEY       = import.meta.env.VITE_LLM_API_KEY as string
+const API_BASE      = (import.meta.env.VITE_PRIMARY_INFERENCE_ENDPOINT as string) 
+const STT_ENGINE    = (import.meta.env.VITE_SPEECH_RECOGNIZER_MODEL as string) 
+const INFERENCE_LLM = (import.meta.env.VITE_CORE_REASONING_MODEL as string) 
+const TTS_ENGINE    = (import.meta.env.VITE_VOICE_SYNTHESIS_MODEL as string) 
+const VOICE_PROFILE = (import.meta.env.VITE_VOICE_SPEAKER_PROFILE as string) 
 
-// ─── Groq STT ─────────────────────────────────────────────────────────────────
-async function groqTranscribe(blob: Blob): Promise<string> {
+// ─── Cloud STT ─────────────────────────────────────────────────────────────────
+async function remoteTranscribe(blob: Blob): Promise<string> {
   const ext  = blob.type.includes('ogg') ? 'ogg'
              : blob.type.includes('mp4') ? 'mp4'
              : blob.type.includes('webm') ? 'webm'
              : 'm4a'
   const form = new FormData()
   form.append('file', blob, `audio.${ext}`)
-  form.append('model', STT_MODEL)
+  form.append('model', STT_ENGINE)
   form.append('temperature', '0')
   form.append('response_format', 'verbose_json')
-  const res  = await fetch(`${GROQ_BASE}/audio/transcriptions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${GROQ_KEY}` },
-    body: form,
-  })
+    const res  = await fetch(`${API_BASE}/audio/transcriptions`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${API_KEY}` },
+      body: form,
+    })
   if (!res.ok) return ''
   const data = await res.json()
   return (data.text as string || '').trim()
 }
 
-// ─── Groq LLM ─────────────────────────────────────────────────────────────────
-async function groqAnswer(question: string, stepText: string, recipeName: string): Promise<string> {
-  const res = await fetch(`${GROQ_BASE}/chat/completions`, {
+// ─── Cloud LLM ─────────────────────────────────────────────────────────────────
+async function remoteAnswer(question: string, stepText: string, recipeName: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/chat/completions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
     body: JSON.stringify({
-      model: LLM_MODEL,
+      model: INFERENCE_LLM,
       messages: [
         {
           role: 'system',
@@ -68,14 +68,14 @@ async function groqAnswer(question: string, stepText: string, recipeName: string
   return (data.choices?.[0]?.message?.content as string || "I'm not sure about that.").trim()
 }
 
-// ─── Groq TTS ─────────────────────────────────────────────────────────────────
-async function groqSpeak(text: string): Promise<void> {
+// ─── Cloud TTS ─────────────────────────────────────────────────────────────────
+async function remoteSpeak(text: string): Promise<void> {
   if (!text.trim()) return
   try {
-    const res = await fetch(`${GROQ_BASE}/audio/speech`, {
+    const res = await fetch(`${API_BASE}/audio/speech`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
-      body: JSON.stringify({ model: TTS_MODEL, voice: TTS_VOICE, input: text }),
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
+      body: JSON.stringify({ model: TTS_ENGINE, voice: VOICE_PROFILE, input: text }),
     })
     if (!res.ok) throw new Error('TTS failed')
     const blob = await res.blob()
@@ -172,12 +172,12 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
     pillTimeoutRef.current = window.setTimeout(() => setActivePill(''), 1000)
   }, [])
 
-  // ── Speak via Groq TTS ────────────────────────────────────────────────────
+  // ── Speak via Cloud TTS ────────────────────────────────────────────────────
   const speak = useCallback(async (text: string) => {
     setIsSpeaking(true)
     isSpeakingRef.current = true
     try {
-      await groqSpeak(text)
+      await remoteSpeak(text)
     } finally {
       setIsSpeaking(false)
       isSpeakingRef.current = false
@@ -215,14 +215,14 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
     await speak(s[currentStepRef.current - 1].text)
   }, [speak])
 
-  // ── Q&A via Groq LLM ──────────────────────────────────────────────────────
+  // ── Q&A via Cloud LLM ──────────────────────────────────────────────────────
   const handleQuestion = useCallback(async (question: string) => {
     const stepText = stepsRef.current?.[currentStepRef.current - 1]?.text ?? ''
     setAiResponse('')
     isProcessingRef.current = true
     setMicStatus('processing')
     try {
-      const answer = await groqAnswer(question, stepText, recipe.name)
+      const answer = await remoteAnswer(question, stepText, recipe.name)
       setAiResponse(answer)
       await speak(answer)
     } catch {
@@ -286,7 +286,7 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
 
         setMicStatus('processing')
         try {
-          const text = await groqTranscribe(blob)
+          const text = await remoteTranscribe(blob)
           console.log('[Whisper]', text)
           if (text && text.trim().length > 1) {
             setLiveTranscript(text)
@@ -363,15 +363,15 @@ export const SmartStepMode = ({ recipe, onExit }: SmartStepModeProps) => {
     return () => window.removeEventListener('keydown', onKey)
   }, [handleNext, handlePrev, showExitModal])
 
-  // ── Fetch steps via Groq ───────────────────────────────────────────────────
+  // ── Fetch steps via Cloud API ───────────────────────────────────────────────────
   useEffect(() => {
     const fetch_ = async () => {
       try {
-        const res = await fetch(`${GROQ_BASE}/chat/completions`, {
+        const res = await fetch(`${API_BASE}/chat/completions`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GROQ_KEY}` },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
           body: JSON.stringify({
-            model: LLM_MODEL,
+            model: INFERENCE_LLM,
             messages: [{
               role: 'system',
               content: `You are an AI chef. Generate a clear, detailed step-by-step recipe for "${recipe.name}". Output ONLY a valid JSON array with no markdown, no code fences, no commentary. Steps should be phrased naturally for speaking aloud. Schema: [{ "id": number, "text": string, "timer": number | null }]`,

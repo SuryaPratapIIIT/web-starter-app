@@ -116,7 +116,7 @@ export const RecipeGrid = ({ ingredients, onRecipeSelect }: RecipeGridProps) => 
     const fetchRecipes = async () => {
       try {
         setIsLoading(true)
-        const apiUrl = import.meta.env.VITE_LLM_API_URL || 'https://api.groq.com/openai/v1/chat/completions'
+        const apiUrl = import.meta.env.VITE_LLM_API_URL || `${import.meta.env.VITE_PRIMARY_INFERENCE_ENDPOINT }`
         const apiKey = import.meta.env.VITE_LLM_API_KEY
 
         if (!apiKey) {
