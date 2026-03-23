@@ -16,27 +16,104 @@ export const IngredientScanner = ({ onIngredientsConfirmed }: IngredientScannerP
   const handleImage = (file: File) => {
     if (!file || !file.type.startsWith('image/')) return
 
-    // Create preview URL
     const reader = new FileReader()
-    reader.onload = (e) => {
-      setImagePreview(e.target?.result as string)
+    reader.onload = async (e) => {
+      const base64Image = e.target?.result as string
+      setImagePreview(base64Image)
       setIsScanning(true)
 
-      // Simulate AI detection with 1.8s delay
-      setTimeout(() => {
-        const mockIngredients = [
-          "Garlic", "Olive Oil", "Tomatoes", "Onion",
-          "Chicken Breast", "Bell Pepper", "Cumin", "Lemon"
-        ]
-        setDetectedIngredients(mockIngredients)
+      try {
+        const apiUrl = import.meta.env.VITE_LLM_API_URL || 'https://api.groq.com/openai/v1/chat/completions'
+        const apiKey = import.meta.env.VITE_LLM_API_KEY
+
+        if (!apiKey) {
+          console.warn("API Key not found in environment variables. Set VITE_LLM_API_KEY in .env")
+          setDetectedIngredients(["Garlic", "Olive Oil", "Tomatoes (Fallback)"])
+          setIsScanning(false)
+          setShowChips(true)
+          setShowCTA(true)
+          return
+        }
+
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model: "meta-llama/llama-4-scout-17b-16e-instruct",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Identify the main raw food ingredients in this image. Return ONLY a comma-separated list of the ingredients (e.g., 'Tomato, Onion, Garlic'). No other text or explanation." },
+                  { type: "image_url", image_url: { url: base64Image } }
+                ]
+              }
+            ],
+            temperature: 0.1,
+            max_completion_tokens: 150,
+            top_p: 1,
+            stream: true
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error(`API error: ${response.status}`)
+        }
+
+        if (!response.body) throw new Error("No response body available to stream");
+
+        const streamReader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let fullContent = "";
+
+        // Prepare UI for real-time chips
+        setShowChips(true);
+
+        while (true) {
+          const { done, value } = await streamReader.read();
+          if (done) break;
+          
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.slice(6).trim();
+              if (dataStr === '[DONE]') break;
+              if (!dataStr) continue;
+              
+              try {
+                const parsed = JSON.parse(dataStr);
+                const textChunk = parsed.choices[0]?.delta?.content || "";
+                fullContent += textChunk;
+                
+                // Real-time chip parsing
+                const ingredients = fullContent.split(',')
+                  .map((s) => s.trim().replace(/^['"*\-.]+/, '').replace(/['"*\-.]+$/, ''))
+                  .filter(Boolean);
+                
+                setDetectedIngredients(ingredients);
+              } catch (err) {
+                // Ignore incomplete JSON chunks during stream iteration
+              }
+            }
+          }
+        }
+        
+        // Finished streaming
+        setIsScanning(false);
+        setShowCTA(true);
+
+      } catch (error) {
+        console.error("Error recognizing ingredients:", error)
+        setDetectedIngredients(["Error scanning image"])
         setIsScanning(false)
         setShowChips(true)
-
-        // Delay CTA button appearance: (count * 80ms) + 400ms
-        setTimeout(() => {
-          setShowCTA(true)
-        }, mockIngredients.length * 80 + 400)
-      }, 1800)
+        setShowCTA(true)
+      }
     }
     reader.readAsDataURL(file)
   }
